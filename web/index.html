@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VOLT">
+<meta name="theme-color" content="#0d0e0c">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+<link rel="stylesheet" href="/static/app.css">
+<title>VOLT</title>
+</head>
+<body>
+
+<!-- ── pairing ─────────────────────────────────────────────── -->
+<section id="pair" class="pair" hidden>
+  <div class="brand big">VOLT<span>v2</span></div>
+  <p>Open the pairing link printed by the Pi, or paste the token below.</p>
+  <input id="pairToken" type="text" placeholder="token" autocomplete="off" autocapitalize="off">
+  <button class="btn accent wide" id="pairBtn">Pair this phone</button>
+  <p class="muted small">On the Pi: <code>journalctl -u volt | grep pair</code></p>
+</section>
+
+<!-- ── app ─────────────────────────────────────────────────── -->
+<div id="app" hidden>
+  <header class="top">
+    <div class="brand">VOLT</div>
+    <div class="status">
+      <span class="dot" id="connDot"></span>
+      <span id="connText">…</span>
+      <span class="tag" id="modeTag">SIM</span>
+    </div>
+    <button class="enable" id="enableBtn">ENABLE</button>
+    <button class="stop" id="stopBtn" aria-label="Stop">STOP</button>
+  </header>
+
+  <div class="toast" id="toast"></div>
+
+  <main>
+    <!-- DRIVE -->
+    <section class="view" data-view="drive">
+      <div class="seg" id="jogMode">
+        <button data-v="joint" class="on">Joints</button>
+        <button data-v="cart">Cartesian</button>
+      </div>
+
+      <div class="speed">
+        <span class="label">Speed</span>
+        <input type="range" id="speed" min="1" max="30" value="15">
+        <span class="num" id="speedVal">15%</span>
+      </div>
+
+      <div id="jogRows" class="rows"></div>
+
+      <div class="card grip">
+        <div class="card-h"><span>Gripper</span><span class="num muted" id="gripVal">–</span></div>
+        <div class="grip-row">
+          <button class="btn" data-grip="open">Open</button>
+          <input type="range" id="gripSlider" min="0" max="100" value="0">
+          <button class="btn" data-grip="close">Close</button>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="homeBtn">Home</button>
+        <button class="btn" id="savePoseQuick">Save pose</button>
+      </div>
+    </section>
+
+    <!-- POSES -->
+    <section class="view" data-view="poses" hidden>
+      <div class="card">
+        <div class="card-h"><span>Save current position</span></div>
+        <div class="inline">
+          <input id="poseName" type="text" placeholder="pose name" autocomplete="off" autocapitalize="off">
+          <button class="btn accent" id="poseSave">Save</button>
+        </div>
+      </div>
+      <div id="poseList" class="list"></div>
+    </section>
+
+    <!-- LOOK -->
+    <section class="view" data-view="look" hidden>
+      <div class="cam">
+        <img id="camImg" alt="">
+        <div class="cam-empty" id="camEmpty">No camera</div>
+        <div class="cam-hud">
+          <span id="camSrc" class="tag"></span>
+          <span class="num" id="camPose"></span>
+        </div>
+      </div>
+      <button class="btn wide" id="camReload">Reload feed</button>
+    </section>
+
+    <!-- AI -->
+    <section class="view" data-view="ai" hidden>
+      <div class="seg four" id="aiMode">
+        <button data-v="off">Off</button>
+        <button data-v="chat">Chat</button>
+        <button data-v="supervised">Supervised</button>
+        <button data-v="autonomous">Auto</button>
+      </div>
+      <p class="muted small" id="aiModeHelp"></p>
+      <div class="brain-line"><span class="dot" id="brainDot"></span><span id="brainText">Brain: checking…</span></div>
+
+      <div class="chat" id="chat"></div>
+      <div id="planBox"></div>
+
+      <div class="ask">
+        <input id="aiText" type="text" placeholder="Tell VOLT what to do…" autocomplete="off">
+        <button class="btn accent" id="aiSend">Send</button>
+      </div>
+    </section>
+
+    <!-- SYSTEM -->
+    <section class="view" data-view="system" hidden>
+      <div class="card">
+        <div class="card-h"><span>System check</span><button class="btn small accent" id="diagRun">Run</button></div>
+        <div id="diagList" class="diag"></div>
+        <div class="card-sub">Motion tests <span class="muted">(moves the arm a tiny amount)</span></div>
+        <div class="chips" id="motionTests">
+          <button class="chip" data-t="gripper">Gripper cycle</button>
+          <button class="chip" data-t="joint1">J1</button><button class="chip" data-t="joint2">J2</button>
+          <button class="chip" data-t="joint3">J3</button><button class="chip" data-t="joint4">J4</button>
+          <button class="chip" data-t="joint5">J5</button><button class="chip" data-t="joint6">J6</button>
+        </div>
+      </div>
+
+      <details class="card" open>
+        <summary>Robot</summary>
+        <label class="row"><span>Mode</span>
+          <div class="seg small" data-set="robot.simulate">
+            <button data-v="true">Simulator</button><button data-v="false">Real arm</button>
+          </div></label>
+        <label class="row"><span>Arm port</span><select data-set="robot.com_port" id="portSel"></select></label>
+        <label class="row"><span>Enable motors on connect</span><input type="checkbox" class="tgl" data-set="robot.auto_enable"></label>
+        <button class="btn wide" id="reconnectBtn">Reconnect</button>
+      </details>
+
+      <details class="card">
+        <summary>Motion</summary>
+        <label class="row"><span>Speed cap %</span><input type="number" min="1" max="100" data-set="motion.speed_cap_pct"></label>
+        <label class="row"><span>Default speed %</span><input type="number" min="1" max="100" data-set="motion.default_speed_pct"></label>
+        <label class="row"><span>Jog pulse (s)</span><input type="number" step="0.05" min="0.05" max="0.5" data-set="motion.jog_pulse_s"></label>
+        <div class="card-sub">Soft joint limits (°)</div>
+        <div id="limitsEd" class="limits"></div>
+      </details>
+
+      <details class="card">
+        <summary>Gripper</summary>
+        <label class="row"><span>Link</span>
+          <div class="seg small" data-set="gripper.link">
+            <button data-v="can">CAN</button><button data-v="uart">UART</button><button data-v="none">None</button>
+          </div></label>
+        <label class="row"><span>UART port</span><select data-set="gripper.uart_port" id="gripPortSel"></select></label>
+        <label class="row"><span>Speed (0–1)</span><input type="number" step="0.05" min="0" max="1" data-set="gripper.speed"></label>
+        <label class="row"><span>Current (mA)</span><input type="number" step="50" min="150" max="1000" data-set="gripper.current_ma"></label>
+        <button class="btn wide" id="gripCal">Calibrate gripper</button>
+      </details>
+
+      <details class="card">
+        <summary>Camera</summary>
+        <label class="row"><span>Source</span>
+          <div class="seg small" data-set="camera.source">
+            <button data-v="remote">Dell</button><button data-v="local">On Pi</button><button data-v="none">None</button>
+          </div></label>
+        <label class="row"><span>Pi device</span><input type="number" min="0" max="9" data-set="camera.device"></label>
+        <label class="row col"><span>Dell stream URL</span><input type="text" data-set="camera.remote_url"></label>
+      </details>
+
+      <details class="card">
+        <summary>AI</summary>
+        <label class="row col"><span>Brain URL (Dell)</span><input type="text" data-set="brain.url"></label>
+        <label class="row"><span>AI max speed %</span><input type="number" min="1" max="100" data-set="ai.max_ai_speed_pct"></label>
+        <label class="row"><span>Voice (ReSpeaker on Dell)</span><input type="checkbox" class="tgl" data-set="ai.voice"></label>
+        <label class="row"><span>Speak replies</span><input type="checkbox" class="tgl" data-set="ai.speak_replies"></label>
+        <div class="card-sub">Actions the AI may use</div>
+        <div class="chips" id="aiActions"></div>
+      </details>
+
+      <details class="card">
+        <summary>Event log</summary>
+        <div id="logList" class="log"></div>
+      </details>
+
+      <p class="muted small center" id="version"></p>
+    </section>
+  </main>
+
+  <nav class="tabs">
+    <button data-tab="drive" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>Drive</button>
+    <button data-tab="poses"><svg viewBox="0 0 24 24"><path d="M5 19l5-9 4 5 5-11"/><circle cx="5" cy="19" r="1.6"/><circle cx="19" cy="4" r="1.6"/></svg>Poses</button>
+    <button data-tab="look"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg>Look</button>
+    <button data-tab="ai"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>AI</button>
+    <button data-tab="system"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>System</button>
+  </nav>
+</div>
+
+<!-- confirm sheet -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-card">
+    <div id="sheetMsg"></div>
+    <div class="btn-row">
+      <button class="btn" id="sheetNo">Cancel</button>
+      <button class="btn accent" id="sheetYes">Go</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
