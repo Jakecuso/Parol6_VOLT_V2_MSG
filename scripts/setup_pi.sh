@@ -37,6 +37,22 @@ echo "[1/6] System packages"
 sudo apt-get update -qq
 sudo apt-get install -y -qq git python3-venv python3-dev avahi-daemon
 
+# ── swap: a 2GB Pi runs out of RAM building the robotics libs and freezes ──
+SWAP_MB=2048
+CUR_MB=$(( $(awk '/SwapTotal/{print $2}' /proc/meminfo) / 1024 ))
+if [ "$CUR_MB" -lt "$SWAP_MB" ]; then
+  echo "      swap is ${CUR_MB}MB, adding a ${SWAP_MB}MB swapfile"
+  if [ ! -f /swapfile-volt ]; then
+    sudo fallocate -l ${SWAP_MB}M /swapfile-volt
+    sudo chmod 600 /swapfile-volt
+    sudo mkswap /swapfile-volt >/dev/null
+  fi
+  sudo swapon /swapfile-volt 2>/dev/null || true
+  grep -q swapfile-volt /etc/fstab || echo '/swapfile-volt none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+else
+  echo "      swap ${CUR_MB}MB, fine"
+fi
+
 # ── venv + deps ─────────────────────────────────────────────
 echo "[2/6] Python environment"
 [ "$CLEAN" = 1 ] && rm -rf .venv
@@ -55,7 +71,7 @@ if ! python -c "import parol6" 2>/dev/null; then
     [ -d external/PAROL6-python-API ] || git clone --depth 1 https://github.com/PCrnjak/PAROL6-python-API external/PAROL6-python-API
     API="external/PAROL6-python-API"
   fi
-  pip install --no-cache-dir -q "$API"
+  pip install --no-cache-dir "$API"   # not quiet, so you can see it working
 fi
 pip install --no-cache-dir -q -r requirements.txt
 python -c "import parol6" || { echo "✗ parol6 failed to import. Check swap (free -h) and re-run with --clean"; exit 1; }
