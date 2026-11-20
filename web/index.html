@@ -129,6 +129,16 @@
         </div>
       </div>
 
+      <details class="card">
+        <summary>Memory</summary>
+        <p class="muted small">VOLT records poses, homing, settings changes, stops and AI actions on its own. Add anything else you want it to remember.</p>
+        <div class="inline">
+          <input id="memText" type="text" placeholder="e.g. J3 sags with the MSG gripper" autocomplete="off">
+          <button class="btn accent" id="memAdd">Remember</button>
+        </div>
+        <div id="memList" class="log" style="margin-top:10px"></div>
+      </details>
+
       <details class="card" open>
         <summary>Robot</summary>
         <label class="row"><span>Mode</span>

@@ -68,6 +68,7 @@ volt/
   server.py          FastAPI: REST + one WebSocket (telemetry out, jog in)
   diagnostics.py     System check + motion tests
   ai.py              Pi side of AI mode (forwards to the Brain, validates plans)
+  journal.py         memory journal: everything VOLT does, synced to the Dell Brain
   camera.py          camera on the Pi (travel mode)
   config.py          settings, saved to data/settings.json
   mock_robot.py      fake arm for development

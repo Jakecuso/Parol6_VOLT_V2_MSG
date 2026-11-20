@@ -19,6 +19,7 @@ from collections import deque
 
 from .config import DATA, Settings
 from .gripper_serial import GripperSerial
+from .journal import Journal
 
 POSES_FILE = DATA / "poses.json"
 CART_AXES = ("X", "Y", "Z", "RX", "RY", "RZ")
@@ -50,6 +51,8 @@ class RobotHub:
         self._busy = None                 # name of running motion, or None
         self._uart = None                 # GripperSerial, created on demand
         self.events = deque(maxlen=200)   # recent log lines for the UI
+        self.journal = Journal()          # long-term memory, synced to the Dell Brain
+        self._last_refusal = ("", 0.0)
         self.state = "disconnected"       # disconnected|connecting|connected|error
         self.last_error = ""
         self._grip_pos = None
@@ -129,6 +132,9 @@ class RobotHub:
             if self.robot.connected:
                 self.robot.stop()
             self.log(f"STOP ({reason})", "warn")
+            if reason not in ("reconnect", "server shutdown"):
+                self.journal.add("stop", f"Stopped by {reason}", reason=reason,
+                                 joints=self._angles_or_none(), busy=self._busy)
         except Exception as e:
             self.log(f"STOP failed: {e}", "error")
         return True
@@ -138,6 +144,7 @@ class RobotHub:
         self.robot.resume()
         self._enabled = True
         self.log("Motors enabled")
+        self.journal.add("enabled", "Motors enabled", joints=self._angles_or_none())
 
     def is_enabled(self) -> bool:
         """Enabled = we enabled it, no STOP since, and the E-stop isn't pressed."""
@@ -147,6 +154,20 @@ class RobotHub:
             return False
 
     # ── guards ─────────────────────────────────────────────────────────────
+    def _angles_or_none(self):
+        try:
+            return [round(a, 2) for a in self.robot.get_angles()] if self.robot.connected else None
+        except Exception:
+            return None
+
+    def _refuse(self, msg: str):
+        """Record a refused motion (throttled so a held jog button doesn't spam) and raise."""
+        last, t = self._last_refusal
+        if msg != last or time.time() - t > 10:
+            self.journal.add("refused", f"Refused: {msg}", reason=msg, joints=self._angles_or_none())
+            self._last_refusal = (msg, time.time())
+        raise MotionRefused(msg)
+
     def _need_connection(self):
         if not self.robot.connected:
             raise MotionRefused("Arm not connected")
@@ -165,7 +186,7 @@ class RobotHub:
             raise MotionRefused("Target must be 6 numbers")
         for i, (a, (lo, hi)) in enumerate(zip(angles, self._limits()), start=1):
             if not lo <= float(a) <= hi:
-                raise MotionRefused(f"J{i} target {a:.1f}° is outside limits [{lo}, {hi}]")
+                self._refuse(f"J{i} target {a:.1f}° is outside limits [{lo}, {hi}]")
 
     def _run_motion(self, name: str, fn):
         self._need_connection()
@@ -189,7 +210,7 @@ class RobotHub:
         lo, hi = self._limits()[joint - 1]
         a = cur[joint - 1]
         if (direction > 0 and a >= hi) or (direction < 0 and a <= lo):
-            raise MotionRefused(f"J{joint} at soft limit ({a:.1f}°)")
+            self._refuse(f"J{joint} at soft limit ({a:.1f}°)")
         pulse = self.settings.get("motion")["jog_pulse_s"]
         return self._run_motion(f"jog J{joint}",
                                 lambda: self.robot.jog_joint(joint, direction * speed, pulse))
@@ -211,7 +232,11 @@ class RobotHub:
 
     def home(self):
         self.log("Homing")
-        return self._run_motion("home", lambda: self.robot.home(wait=True, timeout=90))
+        t = time.time()
+        r = self._run_motion("home", lambda: self.robot.home(wait=True, timeout=90))
+        self.journal.add("homed", f"Homed in {time.time()-t:.1f}s", seconds=round(time.time()-t, 1),
+                         joints=self._angles_or_none(), sim=self.simulate)
+        return r
 
     # ── gripper ────────────────────────────────────────────────────────────
     def _gripper_uart(self) -> GripperSerial:
@@ -249,6 +274,9 @@ class RobotHub:
                                                current=int(g["current_ma"]))
         if position is not None:
             self._grip_pos = position
+        if action == "calibrate":
+            self.journal.add("gripper_calibrated", f"Gripper calibrated over {link.upper()}",
+                             link=link, response=str(resp))
         self.log(f"Gripper {action}" + (f" {position:.2f}" if action == "set" else ""))
         return resp
 
@@ -275,21 +303,35 @@ class RobotHub:
         p = self.poses()
         p[name] = [round(a, 3) for a in self.robot.get_angles()]
         POSES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        old = self.poses().get(name)
         POSES_FILE.write_text(json.dumps(p, indent=2))
         self.log(f"Saved pose '{name}'")
+        self.journal.add("pose_saved",
+                         f"Pose '{name}' {'updated' if old else 'saved'}",
+                         name=name, joints=p[name], previous=old, pose=self.robot.get_pose())
         return p[name]
 
     def delete_pose(self, name: str):
         p = self.poses()
-        p.pop(name, None)
+        old = p.pop(name, None)
         POSES_FILE.write_text(json.dumps(p, indent=2))
+        if old:
+            self.journal.add("pose_deleted", f"Pose '{name}' deleted", name=name, joints=old)
 
     def goto_pose(self, name: str, speed_pct: float, ai: bool = False):
         p = self.poses()
         if name not in p:
             raise MotionRefused(f"No pose named '{name}'")
         self.log(f"Go to pose '{name}'" + (" (AI)" if ai else ""))
-        return self.move_joints(p[name], speed_pct, ai=ai)
+        try:
+            r = self.move_joints(p[name], speed_pct, ai=ai)
+            self.journal.add("pose_used", f"Moved to pose '{name}'" + (" (AI)" if ai else ""),
+                             name=name, ok=True, ai=ai, speed=speed_pct)
+            return r
+        except Exception as e:
+            self.journal.add("pose_used", f"Failed to reach pose '{name}': {e}",
+                             name=name, ok=False, ai=ai, error=str(e))
+            raise
 
     # ── telemetry ──────────────────────────────────────────────────────────
     def snapshot(self) -> dict:
@@ -308,6 +350,7 @@ class RobotHub:
                 if snap["estop"] and self._enabled:
                     self._enabled = False         # E-stop drops enable; re-Enable after release
                     self.log("E-stop pressed", "warn")
+                    self.journal.add("estop", "Physical E-stop pressed", joints=snap["joints"], busy=self._busy)
                 snap["enabled"] = self.is_enabled()
             except Exception as e:
                 snap["error"] = str(e)

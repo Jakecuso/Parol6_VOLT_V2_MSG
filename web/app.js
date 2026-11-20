@@ -326,9 +326,20 @@ async function loadSystem() {
   const log = await api("GET", "/api/log").catch(() => []);
   $("#logList").innerHTML = log.slice().reverse().map((e) =>
     `<div class="${e.level}">${new Date(e.t * 1000).toLocaleTimeString()}  ${esc(e.msg)}</div>`).join("") || "Nothing yet";
+  loadMemory();
   const h = await fetch("/api/hello").then((r) => r.json());
   $("#version").textContent = `VOLT ${h.version} ${h.build || ""}`;
 }
+async function loadMemory() {
+  const mem = await api("GET", "/api/memory?since=0&limit=5000").catch(() => []);
+  $("#memList").innerHTML = mem.slice(-25).reverse().map((e) =>
+    `<div>${new Date(e.t * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}  <b>${esc(e.kind)}</b>  ${esc(e.text)}</div>`).join("") || "No memories yet";
+}
+$("#memAdd").onclick = async () => {
+  const text = $("#memText").value.trim(); if (!text) return;
+  await tryApi("POST", "/api/memory/note", { text }); $("#memText").value = ""; toast("Remembered"); loadMemory();
+};
+
 async function save(path, value) {
   try { S = await api("PATCH", "/api/settings", patchFor(path, value)); toast("Saved"); }
   catch (e) { toast(e.message, true); }

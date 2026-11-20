@@ -45,3 +45,23 @@ Allowed plan actions (the Pi rejects anything else):
 The Pi then drops steps that aren't allowed in Settings, drops all motion in
 `chat` mode, asks the phone for approval in `supervised` mode, and runs the steps
 itself (with the AI speed cap) in `autonomous` mode.
+
+## Memory sync (Brain pulls from the Pi)
+
+`GET http://<pi>:8000/api/memory?since=<last_id>&limit=1000` with header
+`X-Volt-Token: <token>` returns journal entries newer than `last_id`:
+
+```json
+[{"id": 42, "t": 1795216000.1, "kind": "pose_saved",
+  "text": "Pose 'ready' updated",
+  "data": {"name": "ready", "joints": [...], "previous": [...]}}]
+```
+
+The Brain stores `last_id`, embeds `text` (bge-small-en-v1.5 via fastembed),
+keeps `data` as structured metadata, and indexes both in SQLite
+(sqlite-vec for meaning, FTS5 for exact words). Kinds: pose_saved, pose_deleted,
+pose_used, homed, gripper_calibrated, settings_changed, enabled, stop, estop,
+refused, ai_command, ai_executed, note.
+
+`POST /api/memory/note {"text": "...", "source": "voice"}` lets the Brain write
+a memory onto the Pi (e.g. a spoken "remember that...").

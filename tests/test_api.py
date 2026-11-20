@@ -107,3 +107,21 @@ def test_settings_cannot_touch_token():
     assert hub.settings.get("security")["token"] == tok
     assert hub.settings.get("motion")["speed_cap_pct"] == 100
     c.patch("/api/settings", headers=T, json={"motion": {"speed_cap_pct": 30}})
+
+
+def test_memory_journal_records_and_syncs():
+    start = hub.journal._next - 1
+    c.post("/api/enable", headers=T)
+    c.post("/api/home", headers=T)
+    c.post("/api/poses", headers=T, json={"name": "mem_pose"})
+    c.post("/api/move", headers=T, json={"joints": [499, 0, 0, 0, 0, 0]})
+    c.patch("/api/settings", headers=T, json={"motion": {"speed_cap_pct": 25}})
+    c.post("/api/memory/note", headers=T, json={"text": "J3 sags with the MSG gripper"})
+    new = c.get(f"/api/memory?since={start}", headers=T).json()
+    kinds = [e["kind"] for e in new]
+    for k in ("enabled", "homed", "pose_saved", "refused", "settings_changed", "note"):
+        assert k in kinds, (k, kinds)
+    assert all(e["text"] for e in new)
+    assert [e["id"] for e in new] == sorted(e["id"] for e in new)
+    c.patch("/api/settings", headers=T, json={"motion": {"speed_cap_pct": 30}})
+    c.delete("/api/poses/mem_pose", headers=T)

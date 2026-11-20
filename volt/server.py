@@ -139,8 +139,19 @@ def create_app(simulate: bool | None = None) -> FastAPI:
 
     @app.patch("/api/settings", dependencies=[Depends(auth)])
     async def patch_settings(body: dict):
+        import copy
+        snap = copy.deepcopy(settings.public())
         before = dict(settings.get("robot"))
         out = settings.update(body)
+        changed = {}
+        for sec, vals in out.items():
+            for k, v in vals.items():
+                if snap.get(sec, {}).get(k) != v:
+                    changed[f"{sec}.{k}"] = {"from": snap.get(sec, {}).get(k), "to": v}
+        if changed:
+            hub.journal.add("settings_changed",
+                            "Changed " + ", ".join(f"{k} from {c['from']} to {c['to']}" for k, c in changed.items()),
+                            changes=changed)
         camera.configure(settings.get("camera"))
         if before != settings.get("robot"):
             await run(hub.reconnect)
@@ -193,6 +204,19 @@ def create_app(simulate: bool | None = None) -> FastAPI:
     @app.post("/api/ai/execute", dependencies=[Depends(auth)])
     async def ai_execute(body: dict):
         return await run(ai.execute, hub, body.get("plan", []))
+
+    # ── memory journal (the Dell Brain syncs from here) ─────────────────────
+    @app.get("/api/memory", dependencies=[Depends(auth)])
+    async def memory(since: int = 0, limit: int = 1000):
+        return hub.journal.since(since, min(limit, 5000))
+
+    @app.post("/api/memory/note", dependencies=[Depends(auth)])
+    async def memory_note(body: dict):
+        text = (body.get("text") or "").strip()[:2000]
+        if not text:
+            raise MotionRefused("Note is empty")
+        return hub.journal.add("note", text, source=body.get("source", "phone"),
+                               joints=hub._angles_or_none())
 
     # ── WebSocket: telemetry out, jog in ───────────────────────────────────
     @app.websocket("/ws")

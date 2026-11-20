@@ -80,6 +80,8 @@ def command(hub: RobotHub, text: str) -> dict:
         return {"reply": f"The Brain on the Dell isn't reachable ({e.__class__.__name__}).",
                 "plan": [], "rejected": [], "offline": True}
     ok, bad = validate_plan(hub, data.get("plan", []))
+    hub.journal.add("ai_command", f"Asked: {text}. Replied: {data.get('reply', '')}",
+                    text=text, reply=data.get("reply", ""), mode=ai["mode"], plan=ok, rejected=bad)
     result = {"reply": data.get("reply", ""), "plan": ok, "rejected": bad,
               "needs_approval": ai["mode"] == "supervised" and any(s["action"] in MOTION for s in ok)}
     if ai["mode"] == "autonomous" and ok:
@@ -110,4 +112,7 @@ def execute(hub: RobotHub, plan: list) -> list:
             out.append({"step": step, "ok": False, "error": str(e)})
             hub.stop("AI step failed")
             break
+    hub.journal.add("ai_executed",
+                    "AI ran " + ", ".join(("ok " if r["ok"] else "FAILED ") + r["step"]["action"] for r in out),
+                    results=out)
     return out
