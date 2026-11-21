@@ -6,6 +6,10 @@ from the gripper before, during and after calibrate + close + open.
 Run on the Pi, with the arm's 24V on, hands clear of the jaws:
     cd ~/volt-v2 && .venv/bin/python scripts/gripper_diag.py [variant]
 
+Or on any PC with the latest parol6 and the arm's USB plugged in:
+    parol6-server --serial=/dev/ttyACM0      (terminal 1)
+    python gripper_diag.py                   (terminal 2)
+
 variant is optional, e.g. 100mm or 150mm.
 
 Reading the output:
@@ -20,6 +24,19 @@ import time
 from parol6 import RobotClient
 
 VARIANT = sys.argv[1] if len(sys.argv) > 1 else ""
+
+
+def grip_current():
+    """Older parol6 (June 2026) takes grip current in mA; newer versions (Sep 2026+)
+    take a 0-1 fraction of the gripper's current range. Send the right one."""
+    try:
+        import inspect
+        import parol6.tools as t
+        if "* (hi - lo)" in inspect.getsource(t):
+            return 0.15          # ~500 mA on the MSG's 100-2800 mA range
+    except Exception:
+        pass
+    return 400
 
 
 def tool_line(c, label):
@@ -48,7 +65,13 @@ def watch(c, label, seconds):
 def main():
     c = RobotClient(host="127.0.0.1", port=5001)
     c.wait_ready(timeout=10)
-    print("Connected to controller.")
+    try:
+        import importlib.metadata as md
+        ver = md.version("parol6")
+    except Exception:
+        ver = "?"
+    cur = grip_current()
+    print(f"Connected to controller. parol6 {ver}, grip current param = {cur}")
     tool_line(c, "start")
 
     print("\nEnabling controller (resume)…")
@@ -66,8 +89,8 @@ def main():
     tool_line(c, "after select")
 
     for name, action, params in (("CALIBRATE", "calibrate", None),
-                                 ("CLOSE", "move", [1.0, 0.5, 400]),
-                                 ("OPEN", "move", [0.0, 0.5, 400])):
+                                 ("CLOSE", "move", [1.0, 0.5, cur]),
+                                 ("OPEN", "move", [0.0, 0.5, cur])):
         print(f"\n>>> {name}")
         try:
             t = time.time()
