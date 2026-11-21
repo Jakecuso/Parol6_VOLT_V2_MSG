@@ -23,20 +23,19 @@ VARIANT = sys.argv[1] if len(sys.argv) > 1 else ""
 
 
 def tool_line(c, label):
-    try:
-        st = c.status()
-        ts = getattr(st, "tool_status", None)
-        if ts is None:
-            print(f"  {label:<18} (no tool status)")
-            return
-        pos = list(getattr(ts, "positions", []) or [])
-        ch = list(getattr(ts, "channels", []) or [])
-        print(f"  {label:<18} tool={getattr(ts, 'tool_key', '?')!s:<6} "
-              f"state={getattr(ts, 'state', '?')!s:<14} pos={[round(p, 3) for p in pos]} "
-              f"current={ch} engaged={getattr(ts, 'engaged', '?')} "
-              f"part={getattr(ts, 'part_detected', '?')} fault={getattr(ts, 'fault_code', '?')}")
-    except Exception as e:
-        print(f"  {label:<18} status error: {e}")
+    """Print the raw tool status two ways: status().tool_status and _tool_status()."""
+    for src, fn in (("status", lambda: getattr(c.status(), "tool_status", None)),
+                    ("query", lambda: c._tool_status())):
+        try:
+            ts = fn()
+            if ts is None:
+                print(f"  {label:<14} [{src}] None")
+                continue
+            fields = {k: getattr(ts, k) for k in ("key", "variant_key", "state", "engaged",
+                      "part_detected", "fault_code", "positions", "channels") if hasattr(ts, k)}
+            print(f"  {label:<14} [{src}] {fields or repr(ts)[:300]}")
+        except Exception as e:
+            print(f"  {label:<14} [{src}] error: {e}")
 
 
 def watch(c, label, seconds):
