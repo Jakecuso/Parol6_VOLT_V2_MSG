@@ -212,3 +212,12 @@ def test_gripper_needs_calibration_after_connect(monkeypatch):
     assert c.post("/api/gripper", headers=T, json={"action": "calibrate"}).json()["ok"]
     assert c.post("/api/gripper", headers=T, json={"action": "close"}).json()["ok"]
     assert c.get("/api/state", headers=T).json()["gripper_calibrated"] is True
+
+
+def test_gripper_after_stop_says_enable_first():
+    hub.settings.data["gripper"]["link"] = "can"
+    c.post("/api/enable", headers=T)
+    c.post("/api/stop", headers=T)
+    import time as _t; _t.sleep(0.2)
+    r = c.post("/api/gripper", headers=T, json={"action": "open"})
+    assert r.status_code == 409 and "Tap Enable first" in r.json()["error"]

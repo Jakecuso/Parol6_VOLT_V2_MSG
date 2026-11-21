@@ -337,6 +337,10 @@ class RobotHub:
         elif action != "calibrate":
             raise MotionRefused("Bad gripper action")
 
+        if link == "can":
+            self._need_connection()
+            if not self.is_enabled():
+                raise MotionRefused("Motors are disabled (after a STOP or E-stop). Tap Enable first")
         if link == "can" and action != "calibrate" and not self._grip_cal and not self.is_mock:
             raise MotionRefused("GRIPPER_NOT_CALIBRATED: the gripper needs calibrating after "
                                 "each connect (jaws open and close fully once)")
