@@ -67,7 +67,11 @@ DEFAULTS: dict = {
         "model": "claude",
     },
     "security": {
-        "token": "",               # generated on first run; phone stores it once
+        # Off: anyone on the home network can open the app (your choice for home).
+        # On: each phone must open the pairing link once. Turn on for fairs/shared
+        # Wi-Fi with `bash scripts/pairing.sh on`. Not changeable from the phone.
+        "require_token": False,
+        "token": "",               # generated on first run; used when pairing is on
     },
 }
 

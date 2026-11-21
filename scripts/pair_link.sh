@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Print the phone pairing link again.
+# Print the link to open VOLT on a phone (with the pairing token if pairing is on).
 cd "$(dirname "$0")/.."
-TOKEN="$(python3 -c 'import json;print(json.load(open("data/settings.json"))["security"]["token"])')"
-echo "http://$(hostname).local:${VOLT_PORT:-8000}/#pair=$TOKEN"
-echo "http://$(hostname -I | awk '{print $1}'):${VOLT_PORT:-8000}/#pair=$TOKEN"
+read -r REQ TOKEN < <(python3 -c 'import json;s=json.load(open("data/settings.json"))["security"];print(int(s.get("require_token",False)), s["token"])')
+SUFFIX=""
+[ "$REQ" = "1" ] && SUFFIX="/#pair=$TOKEN"
+echo "   http://$(hostname).local:${VOLT_PORT:-8000}$SUFFIX"
+echo "   http://$(hostname -I | awk '{print $1}'):${VOLT_PORT:-8000}$SUFFIX"

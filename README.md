@@ -33,7 +33,7 @@ Everything (your thumbs, the Brain, the AI) goes through the same rules:
 - **Deadman jog**: each jog message moves the arm for 0.15 s. Lift your finger, lose
   Wi-Fi or close the app and it stops on its own
 - **Motors off at boot** until you tap Enable
-- **Pairing token** so nobody else on the Wi-Fi can drive it
+- **Optional pairing** (`bash scripts/pairing.sh on|off`, off by default): when on, only phones that opened the pairing link can drive it. Turn it on for fairs or shared Wi-Fi
 - AI can only use actions you allow (`goto_pose`, `gripper`, `home`, `look`), and
   never raw joint angles
 
@@ -45,7 +45,7 @@ cd ~/volt-v2
 bash scripts/setup_pi.sh
 ```
 
-It prints a pairing link. Open it once on your phone, then **Share → Add to Home Screen**.
+It prints the link to open on your phone, then **Share → Add to Home Screen**.
 The installer stops the v1 app (both can't use the arm's USB port at once).
 `bash scripts/use_v1.sh` switches back; `bash scripts/use_v2.sh` returns.
 

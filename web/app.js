@@ -367,7 +367,8 @@ $$("#motionTests .chip").forEach((c) => (c.onclick = async () => {
 
 // ── boot ────────────────────────────────────────────────────
 async function boot() {
-  if (!TOKEN) return showPair();
+  const hello = await fetch("/api/hello").then((r) => r.json()).catch(() => ({}));
+  if (hello.pairing && !TOKEN) return showPair();
   try { await loadSettings(); } catch { return showPair(); }
   $("#pair").hidden = true; $("#app").hidden = false;
   buildJogRows();

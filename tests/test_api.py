@@ -27,9 +27,24 @@ def client():
 c = client()
 
 
-def test_auth_required():
-    assert c.get("/api/state").status_code == 401
-    assert c.get("/api/state", headers=T).status_code == 200
+def _pairing(on: bool):
+    hub.settings.data["security"]["require_token"] = on
+
+
+def test_pairing_off_by_default():
+    _pairing(False)
+    assert c.get("/api/state").status_code == 200
+    assert c.get("/api/hello").json()["pairing"] is False
+
+
+def test_auth_required_when_pairing_on():
+    _pairing(True)
+    try:
+        assert c.get("/api/state").status_code == 401
+        assert c.get("/api/state", headers=T).status_code == 200
+        assert c.get("/api/hello").json()["pairing"] is True
+    finally:
+        _pairing(False)
 
 
 def test_motion_needs_enable_then_works():
@@ -74,12 +89,16 @@ def test_ws_jog_and_stop():
     assert not hub.is_enabled()
 
 
-def test_ws_rejects_bad_token():
+def test_ws_rejects_bad_token_when_pairing_on():
     import pytest
     from starlette.websockets import WebSocketDisconnect
-    with pytest.raises(WebSocketDisconnect):
-        with c.websocket_connect("/ws?token=nope") as ws:
-            ws.receive_json()
+    _pairing(True)
+    try:
+        with pytest.raises(WebSocketDisconnect):
+            with c.websocket_connect("/ws?token=nope") as ws:
+                ws.receive_json()
+    finally:
+        _pairing(False)
 
 
 def test_diagnostics_run():
@@ -103,8 +122,10 @@ def test_ai_off_and_chat_drops_motion():
 
 def test_settings_cannot_touch_token():
     tok = T["x-volt-token"]
-    c.patch("/api/settings", headers=T, json={"security": {"token": "x"}, "motion": {"speed_cap_pct": 500}})
+    c.patch("/api/settings", headers=T, json={"security": {"token": "x", "require_token": True},
+                                              "motion": {"speed_cap_pct": 500}})
     assert hub.settings.get("security")["token"] == tok
+    assert hub.settings.get("security")["require_token"] is False   # phone can't flip pairing
     assert hub.settings.get("motion")["speed_cap_pct"] == 100
     c.patch("/api/settings", headers=T, json={"motion": {"speed_cap_pct": 30}})
 

@@ -49,7 +49,10 @@ def create_app(simulate: bool | None = None) -> FastAPI:
 
     # ── auth ───────────────────────────────────────────────────────────────
     def token_ok(t: str | None) -> bool:
-        return bool(t) and t == settings.get("security")["token"]
+        sec = settings.get("security")
+        if not sec.get("require_token", False):
+            return True
+        return bool(t) and t == sec["token"]
 
     def auth(request: Request):
         t = request.headers.get("x-volt-token") or request.query_params.get("token")
@@ -71,7 +74,8 @@ def create_app(simulate: bool | None = None) -> FastAPI:
     # ── basics ─────────────────────────────────────────────────────────────
     @app.get("/api/hello")
     async def hello():
-        return {"name": "VOLT", "version": VERSION, "build": _git_version()}
+        return {"name": "VOLT", "version": VERSION, "build": _git_version(),
+                "pairing": bool(settings.get("security").get("require_token", False))}
 
     @app.get("/api/state", dependencies=[Depends(auth)])
     async def state():

@@ -131,17 +131,17 @@ sudo systemctl restart volt
 # ── done ────────────────────────────────────────────────────
 echo "[6/6] Done"
 sleep 4
-TOKEN="$(python -c 'import json;print(json.load(open("data/settings.json"))["security"]["token"])')"
+PAIRING="$(python -c 'import json;print("ON" if json.load(open("data/settings.json"))["security"].get("require_token") else "OFF (anyone on your Wi-Fi can use it)")')"
+echo
+echo "────────────────────────────────────────────────────────────"
+echo " VOLT v2 is running and starts on every boot."
+echo
+echo " On your phone open:"
+bash scripts/pair_link.sh
 cat <<EOF
 
-────────────────────────────────────────────────────────────
- VOLT v2 is running and starts on every boot.
-
- On your phone, open this link ONCE (it pairs the phone):
-   http://$(hostname).local:$PORT/#pair=$TOKEN
-   http://$(hostname -I | awk '{print $1}'):$PORT/#pair=$TOKEN
-
  Then Share → Add to Home Screen.
+ Pairing is $PAIRING. Change it with: bash scripts/pairing.sh on|off
 
    sudo systemctl status volt     journalctl -u volt -f
    bash scripts/pair_link.sh      (show the link again)

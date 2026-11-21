@@ -29,8 +29,12 @@ def main():
     print("─" * 60)
     sim = app.state.hub.simulate
     print(f" VOLT v2  [{'SIMULATOR' if sim else 'REAL ARM (motors stay off until you tap Enable)'}]")
-    print(f" Pair your phone (open once, then Add to Home Screen):")
-    print(f"   http://{host}.local:{a.port}/#pair={token}")
+    if app.state.settings.get("security").get("require_token"):
+        print(" Pair your phone (open once, then Add to Home Screen):")
+        print(f"   http://{host}.local:{a.port}/#pair={token}")
+    else:
+        print(" Open on your phone (pairing is off), then Add to Home Screen:")
+        print(f"   http://{host}.local:{a.port}")
     print("─" * 60)
     uvicorn.run(app, host="0.0.0.0", port=a.port, log_level="warning")
 
