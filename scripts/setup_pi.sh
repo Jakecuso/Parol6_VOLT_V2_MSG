@@ -56,10 +56,18 @@ fi
 # ── venv + deps ─────────────────────────────────────────────
 echo "[2/6] Python environment"
 [ "$CLEAN" = 1 ] && rm -rf .venv
+# Building the PAROL6 deps (ruckig, toppra, ...) maxes all 4 cores for a long
+# time, which has rebooted Pis on weak power supplies. If v1 already has a working
+# venv with parol6, reuse it instead of compiling everything again.
+if [ ! -e .venv ] && [ "$CLEAN" != 1 ] && [ -x "$V1/.venv/bin/python" ] \
+   && "$V1/.venv/bin/python" -c "import parol6" 2>/dev/null; then
+  echo "      reusing v1's environment ($V1/.venv), no compiling needed"
+  ln -s "$V1/.venv" .venv
+fi
 [ -d .venv ] || python3 -m venv .venv
 # shellcheck disable=SC1091
 source .venv/bin/activate
-python -m pip install -q --upgrade pip
+python -m pip install -q --upgrade pip || true
 export MAKEFLAGS="-j1" MAX_JOBS=1
 
 echo "[3/6] PAROL6 API (slow the first time)"
@@ -71,7 +79,7 @@ if ! python -c "import parol6" 2>/dev/null; then
     [ -d external/PAROL6-python-API ] || git clone --depth 1 https://github.com/PCrnjak/PAROL6-python-API external/PAROL6-python-API
     API="external/PAROL6-python-API"
   fi
-  pip install --no-cache-dir "$API"   # not quiet, so you can see it working
+  MAKEFLAGS="-j1" pip install --no-cache-dir "$API"   # not quiet, so you can see it working
 fi
 pip install --no-cache-dir -q -r requirements.txt
 python -c "import parol6" || { echo "✗ parol6 failed to import. Check swap (free -h) and re-run with --clean"; exit 1; }
