@@ -44,6 +44,15 @@ def create_app(simulate: bool | None = None) -> FastAPI:
         hub.stop("server shutdown")
 
     app = FastAPI(title="VOLT", version=VERSION, lifespan=lifespan)
+
+    @app.middleware("http")
+    async def no_cache(request: Request, call_next):
+        """Phones aggressively cache the app; make updates show up on the next load."""
+        resp = await call_next(request)
+        p = request.url.path
+        if p == "/" or p.startswith("/static/") or p.endswith(".webmanifest"):
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return resp
     app.state.hub = hub
     app.state.settings = settings
 
