@@ -215,8 +215,8 @@ def create_app(simulate: bool | None = None) -> FastAPI:
         text = (body.get("text") or "").strip()[:2000]
         if not text:
             raise MotionRefused("Note is empty")
-        return hub.journal.add("note", text, source=body.get("source", "phone"),
-                               joints=hub._angles_or_none())
+        joints = await run(hub._angles_or_none)
+        return hub.journal.add("note", text, source=body.get("source", "phone"), joints=joints)
 
     # ── WebSocket: telemetry out, jog in ───────────────────────────────────
     @app.websocket("/ws")

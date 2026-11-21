@@ -125,3 +125,23 @@ def test_memory_journal_records_and_syncs():
     assert [e["id"] for e in new] == sorted(e["id"] for e in new)
     c.patch("/api/settings", headers=T, json={"motion": {"speed_cap_pct": 30}})
     c.delete("/api/poses/mem_pose", headers=T)
+
+
+def test_stop_works_from_http_and_websocket():
+    """Regression: STOP used to call the sync robot client on the event loop and fail."""
+    import time as _t
+    for via in ("http", "ws"):
+        c.post("/api/enable", headers=T)
+        assert hub.is_enabled()
+        hub.robot._enabled = True
+        n_err = sum(1 for e in hub.events if "STOP failed" in e["msg"])
+        if via == "http":
+            assert c.post("/api/stop", headers=T).json()["ok"]
+        else:
+            with c.websocket_connect(f"/ws?token={T['x-volt-token']}") as ws:
+                ws.receive_json()
+                ws.send_json({"t": "stop"})
+                ws.receive_json()
+        _t.sleep(0.2)
+        assert not hub.robot.is_enabled(), f"robot not halted via {via}"
+        assert sum(1 for e in hub.events if "STOP failed" in e["msg"]) == n_err, f"STOP failed via {via}"

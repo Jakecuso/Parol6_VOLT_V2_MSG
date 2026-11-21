@@ -11,11 +11,13 @@ Rules enforced here (the phone, the Dell Brain and the AI all hit these):
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 
 from .config import DATA, Settings
 from .gripper_serial import GripperSerial
@@ -57,6 +59,9 @@ class RobotHub:
         self.last_error = ""
         self._grip_pos = None
         self._connect_thread = None
+        # STOP gets its own thread: the parol6 RobotClient refuses to run on the
+        # web server's event loop, and STOP must never queue behind other work.
+        self._stopper = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stop")
         self._enabled = False             # our own flag: halt() disables the controller,
                                           # but the API has no "enabled" readout
 
@@ -126,7 +131,20 @@ class RobotHub:
 
     # ── stop / enable ──────────────────────────────────────────────────────
     def stop(self, reason: str = "user"):
-        """Halt immediately. Deliberately does not take the motion lock."""
+        """Halt immediately. Deliberately does not take the motion lock.
+
+        Safe to call from anywhere. From async code (the web server) the halt runs
+        on the dedicated stop thread; elsewhere it runs inline and blocks until sent.
+        """
+        self._enabled = False
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return self._do_stop(reason)
+        self._stopper.submit(self._do_stop, reason)
+        return True
+
+    def _do_stop(self, reason: str):
         try:
             self._enabled = False
             if self.robot.connected:

@@ -7,6 +7,7 @@ into fake joint angles, and never touches hardware. On the Pi the real Robot
 """
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 
@@ -20,6 +21,16 @@ class _Status:
 
     def __str__(self):
         return "mock"
+
+
+def _no_event_loop():
+    """parol6's sync RobotClient raises if used on a running event loop. Mirror that
+    so tests catch any code path that calls the robot from async code."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    raise RuntimeError("RobotClient was used while an event loop is running (mock)")
 
 
 class MockRobot:
@@ -56,9 +67,11 @@ class MockRobot:
 
     # status
     def ping(self):
+        _no_event_loop()
         return True
 
     def get_angles(self):
+        _no_event_loop()
         with self._lock:
             return list(self._angles)
 
@@ -67,6 +80,7 @@ class MockRobot:
         return [200 + a[0], a[1] * 2, 300 + a[2] / 3, a[3], a[4], a[5]]
 
     def get_status(self):
+        _no_event_loop()
         return _Status()
 
     def is_enabled(self):
@@ -74,15 +88,18 @@ class MockRobot:
 
     # control
     def stop(self):
+        _no_event_loop()
         self._enabled = False
 
     def disable(self):
         self.stop()
 
     def resume(self):
+        _no_event_loop()
         self._enabled = True
 
     def set_tool(self, name):
+        _no_event_loop()
         return 0
 
     def home(self, wait=True, timeout=60.0):
@@ -119,9 +136,11 @@ class MockRobot:
         return self.gripper_move(1.0, **kw)
 
     def gripper_calibrate(self):
+        _no_event_loop()
         return 0
 
     def _require(self):
+        _no_event_loop()
         if not self._connected:
             raise RuntimeError("not connected")
         if not self._enabled:
