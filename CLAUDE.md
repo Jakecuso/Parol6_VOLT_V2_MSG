@@ -27,3 +27,12 @@ Phone controller for a PAROL6 arm ("VOLT") on a Raspberry Pi 5. See README.md.
 ## Next
 - Dell Brain repo implementing docs/BRAIN_API.md (vision, ReSpeaker voice, Claude, memory).
 - Re-tune homing for the MSG gripper; measure real joint limits and tighten Settings > Motion.
+
+## Later (after everything works end to end)
+- Obsidian memory vault on the Dell (`/mnt/storage/volt-corpus`, plugins: Smart Connections,
+  New 3D Graph, Dataview). Launch with `--disable-gpu` (old Radeon HD 7750 glitches).
+  Brain writes the Pi journal into the vault as Markdown. Make the setup repeatable.
+- Shareable release: one install wizard that sets up the Pi (VOLT v2), the Dell (Brain,
+  embeddings, Obsidian vault) and pairs the phone, so other PAROL6 + MSG owners can use it.
+  Lessons so far: 2GB Pi needs swap before installing; run installs in tmux; Ubuntu needs
+  `libfuse2t64` for AppImages; folders under /mnt need chown to the user.
