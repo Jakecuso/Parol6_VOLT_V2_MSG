@@ -185,3 +185,16 @@ def test_unhomed_real_arm_rules(monkeypatch):
     assert c.get("/api/state", headers=T).json()["homed"] is False
     assert c.post("/api/home", headers=T).json()["ok"]
     assert hub.homed and c.get("/api/state", headers=T).json()["homed"] is True
+
+
+def test_stale_controller_is_stopped_before_connecting(monkeypatch):
+    """Regression: switching Simulator -> Real reused a controller with no serial port."""
+    import subprocess
+    import time as _t
+    from volt.hub import RobotHub
+    fake = subprocess.Popen(["python3", "-c", "import time; time.sleep(60)", "parol6.server.cli"])
+    _t.sleep(0.3)
+    monkeypatch.setattr(RobotHub, "is_mock", property(lambda self: False))
+    hub._kill_stale_controller()
+    assert fake.wait(timeout=6) is not None
+    assert subprocess.run(["pgrep", "-f", "parol6.server.cli"], capture_output=True).returncode != 0

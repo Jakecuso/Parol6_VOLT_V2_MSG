@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import subprocess
 import threading
 import time
 from collections import deque
@@ -81,12 +82,35 @@ class RobotHub:
     def simulate(self) -> bool:
         return self.is_mock or bool(self.settings.get("robot")["simulate"])
 
+    def _kill_stale_controller(self):
+        """Stop any PAROL6 controller process left over from an earlier connection.
+
+        parol6's Robot.start() *attaches* to a controller that's already running.
+        If that one was started in simulator mode it has no serial port, so
+        switching it to "real" leaves the arm unconnected (all joints 0.0°, homing
+        never starts). Always start a fresh controller with the right port instead.
+        """
+        if self.is_mock:
+            return
+        try:
+            if subprocess.run(["pgrep", "-f", "parol6.server.cli"], capture_output=True).returncode != 0:
+                return
+            self.log("Stopping leftover PAROL6 controller", "warn")
+            subprocess.run(["pkill", "-f", "parol6.server.cli"], capture_output=True)
+            for _ in range(50):                      # wait up to 5 s for it to exit
+                time.sleep(0.1)
+                if subprocess.run(["pgrep", "-f", "parol6.server.cli"], capture_output=True).returncode != 0:
+                    return
+            subprocess.run(["pkill", "-9", "-f", "parol6.server.cli"], capture_output=True)
+            time.sleep(0.5)
+        except FileNotFoundError:
+            pass                                     # no pgrep (not Linux): nothing to do
+
     def connect_background(self):
         """Connect (retrying) without blocking the web server. Never enables motors
         unless robot.auto_enable is on."""
         if self._connect_thread and self._connect_thread.is_alive():
             return
-        cfg = self.settings.get("robot")
 
         def _worker():
             self.state = "connecting"
@@ -94,6 +118,8 @@ class RobotHub:
             while True:
                 attempt += 1
                 try:
+                    cfg = self.settings.get("robot")      # re-read: Settings may have changed
+                    self._kill_stale_controller()
                     self.robot.simulate = cfg["simulate"]
                     self.robot.connect(com_port=cfg["com_port"] or None)
                     self.state = "connected"
