@@ -24,6 +24,7 @@ from .gripper_serial import GripperSerial
 from .journal import Journal
 
 POSES_FILE = DATA / "poses.json"
+UNHOMED_MAX_SPEED = 10   # % cap for joint jogs before the arm has been homed
 CART_AXES = ("X", "Y", "Z", "RX", "RY", "RZ")
 
 
@@ -62,6 +63,7 @@ class RobotHub:
         # STOP gets its own thread: the parol6 RobotClient refuses to run on the
         # web server's event loop, and STOP must never queue behind other work.
         self._stopper = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stop")
+        self._homed = False               # open-loop arm: angles mean nothing until homed
         self._enabled = False             # our own flag: halt() disables the controller,
                                           # but the API has no "enabled" readout
 
@@ -121,6 +123,7 @@ class RobotHub:
             pass
         self.state = "disconnected"
         self._enabled = False
+        self._homed = False
         if self.is_mock:
             self.robot.connect()
             self.state = "connected"
@@ -186,6 +189,15 @@ class RobotHub:
             self._last_refusal = (msg, time.time())
         raise MotionRefused(msg)
 
+    @property
+    def homed(self) -> bool:
+        """The simulator always knows where it is; the real open-loop arm only after Home."""
+        return self.simulate or self._homed
+
+    def _need_homed(self, what: str):
+        if not self.homed:
+            self._refuse(f"Home the arm first ({what} needs a known position)")
+
     def _need_connection(self):
         if not self.robot.connected:
             raise MotionRefused("Arm not connected")
@@ -224,11 +236,16 @@ class RobotHub:
         if joint not in range(1, 7) or direction not in (-1, 1):
             raise MotionRefused("Bad jog request")
         speed = self._clamp_speed(speed_pct)
-        cur = self.robot.get_angles()
-        lo, hi = self._limits()[joint - 1]
-        a = cur[joint - 1]
-        if (direction > 0 and a >= hi) or (direction < 0 and a <= lo):
-            self._refuse(f"J{joint} at soft limit ({a:.1f}°)")
+        if self.homed:
+            cur = self.robot.get_angles()
+            lo, hi = self._limits()[joint - 1]
+            a = cur[joint - 1]
+            if (direction > 0 and a >= hi) or (direction < 0 and a <= lo):
+                self._refuse(f"J{joint} at soft limit ({a:.1f}°)")
+        else:
+            # Before homing the reported angles are meaningless, so soft limits
+            # can't be checked. Allow slow joint jogs so you can free the arm.
+            speed = min(speed, UNHOMED_MAX_SPEED)
         pulse = self.settings.get("motion")["jog_pulse_s"]
         return self._run_motion(f"jog J{joint}",
                                 lambda: self.robot.jog_joint(joint, direction * speed, pulse))
@@ -237,12 +254,14 @@ class RobotHub:
         axis = axis.upper()
         if axis not in CART_AXES or direction not in (-1, 1):
             raise MotionRefused("Bad jog request")
+        self._need_homed("Cartesian jog")
         speed = self._clamp_speed(speed_pct)
         pulse = self.settings.get("motion")["jog_pulse_s"]
         return self._run_motion(f"jog {axis}",
                                 lambda: self.robot.jog_cartesian(axis, direction * speed, pulse))
 
     def move_joints(self, angles, speed_pct: float, ai: bool = False):
+        self._need_homed("moving to a position")
         self._check_target(angles)
         speed = self._clamp_speed(speed_pct, ai=ai) / 100.0
         return self._run_motion("move", lambda: self.robot.move_joints(
@@ -251,8 +270,15 @@ class RobotHub:
     def home(self):
         self.log("Homing")
         t = time.time()
-        r = self._run_motion("home", lambda: self.robot.home(wait=True, timeout=90))
-        self.journal.add("homed", f"Homed in {time.time()-t:.1f}s", seconds=round(time.time()-t, 1),
+        try:
+            r = self._run_motion("home", lambda: self.robot.home(wait=True, timeout=90))
+        except Exception as e:
+            self._homed = False
+            self.journal.add("homed", f"Homing FAILED: {e}", ok=False, error=str(e),
+                             joints=self._angles_or_none(), sim=self.simulate)
+            raise
+        self._homed = True
+        self.journal.add("homed", f"Homed in {time.time()-t:.1f}s", ok=True, seconds=round(time.time()-t, 1),
                          joints=self._angles_or_none(), sim=self.simulate)
         return r
 
@@ -355,7 +381,7 @@ class RobotHub:
     def snapshot(self) -> dict:
         snap = {
             "state": self.state, "sim": self.simulate, "mock": self.is_mock,
-            "enabled": False, "estop": None, "busy": self._busy,
+            "enabled": False, "estop": None, "busy": self._busy, "homed": self.homed,
             "joints": None, "pose": None, "gripper": self._grip_pos,
             "error": self.last_error if self.state != "connected" else "",
         }

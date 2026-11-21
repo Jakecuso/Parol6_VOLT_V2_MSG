@@ -183,3 +183,5 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 28px;
 .sheet-card { width: 100%; background: var(--panel); border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
   padding: 18px 14px calc(var(--safe-bot) + 14px); display: flex; flex-direction: column; gap: 16px; font-size: 16px; }
 .pair { position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 28px; max-width: 480px; margin: 0 auto; }
+
+.banner { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--warn); color: var(--warn); font-size: 13.5px; background: #ffb0200f; }

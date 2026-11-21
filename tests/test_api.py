@@ -166,3 +166,22 @@ def test_stop_works_from_http_and_websocket():
         _t.sleep(0.2)
         assert not hub.robot.is_enabled(), f"robot not halted via {via}"
         assert sum(1 for e in hub.events if "STOP failed" in e["msg"]) == n_err, f"STOP failed via {via}"
+
+
+def test_unhomed_real_arm_rules(monkeypatch):
+    """Real open-loop arm before Home: slow joint jog without limit checks, no moves."""
+    from volt.hub import RobotHub, UNHOMED_MAX_SPEED
+    monkeypatch.setattr(RobotHub, "simulate", property(lambda self: False))
+    hub._homed = False
+    c.post("/api/enable", headers=T)
+    hub.robot._angles = [0.0] * 6                      # what an un-homed PAROL6 reports
+    sent = []
+    orig = hub.robot.jog_joint
+    monkeypatch.setattr(hub.robot, "jog_joint", lambda j, s, d: sent.append(s) or orig(j, s, d))
+    hub.jog_joint(2, 1, 30)                            # J2=0 is outside limits, still allowed
+    assert sent and abs(sent[-1]) <= UNHOMED_MAX_SPEED
+    r = c.post("/api/move", headers=T, json={"joints": [0, -90, 180, 0, 0, 180]})
+    assert r.status_code == 409 and "Home the arm first" in r.json()["error"]
+    assert c.get("/api/state", headers=T).json()["homed"] is False
+    assert c.post("/api/home", headers=T).json()["ok"]
+    assert hub.homed and c.get("/api/state", headers=T).json()["homed"] is True

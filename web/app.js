@@ -72,8 +72,10 @@ function setConn(cls, text) { $("#connDot").className = "dot " + cls; $("#connTe
 function render(s) {
   R = s;
   const busy = s.busy ? ` · ${s.busy}` : "";
-  if (s.state === "connected") setConn(s.estop ? "warn" : "ok", (s.estop ? "E-STOP" : s.enabled ? "Ready" : "Disabled") + busy);
+  const hm = s.homed === false ? " · not homed" : "";
+  if (s.state === "connected") setConn(s.estop || s.homed === false ? "warn" : "ok", (s.estop ? "E-STOP" : s.enabled ? "Ready" : "Disabled") + hm + busy);
   else setConn(s.state === "connecting" ? "warn" : "bad", s.state === "connecting" ? "Connecting…" : "Not connected");
+  $("#homeBanner").hidden = !(s.state === "connected" && s.homed === false);
   const tag = $("#modeTag");
   tag.textContent = s.mock ? "MOCK" : s.sim ? "SIM" : "REAL";
   tag.classList.toggle("real", !s.sim);
