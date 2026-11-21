@@ -81,7 +81,8 @@ function render(s) {
   tag.classList.toggle("real", !s.sim);
   const en = $("#enableBtn"); en.classList.toggle("on", !!s.enabled); en.textContent = s.enabled ? "ENABLED" : "ENABLE";
   updateJogReadout();
-  $("#gripVal").textContent = s.gripper == null ? "–" : `${Math.round(s.gripper * 100)}% closed`;
+  $("#gripVal").textContent = s.gripper_calibrated === false ? "not calibrated"
+    : s.gripper == null ? "–" : `${Math.round(s.gripper * 100)}% closed`;
   $("#camPose").textContent = s.pose ? `X ${s.pose[0].toFixed(0)}  Y ${s.pose[1].toFixed(0)}  Z ${s.pose[2].toFixed(0)}` : "";
 }
 
@@ -178,10 +179,21 @@ $$("#jogMode button").forEach((b) => (b.onclick = () => {
 }));
 $("#speed").oninput = (e) => ($("#speedVal").textContent = e.target.value + "%");
 
-// gripper
+// gripper: if parol6 says it isn't calibrated yet, offer to calibrate, then retry
+async function gripper(body) {
+  try { return await api("POST", "/api/gripper", body); }
+  catch (e) {
+    if (!String(e.message).startsWith("GRIPPER_NOT_CALIBRATED")) { toast(e.message, true); throw e; }
+    const ok = await confirmSheet("<b>Calibrate the gripper first?</b><br><span class='muted'>It needs this once after every connect. The jaws open and close fully.</span>", "Calibrate");
+    if (!ok) throw e;
+    toast("Calibrating gripper…");
+    await tryApi("POST", "/api/gripper", { action: "calibrate" });
+    return await tryApi("POST", "/api/gripper", body);
+  }
+}
 $$("[data-grip]").forEach((b) => (b.onclick = () =>
-  tryApi("POST", "/api/gripper", { action: b.dataset.grip }).then(() => ($("#gripSlider").value = b.dataset.grip === "open" ? 0 : 100))));
-$("#gripSlider").onchange = (e) => tryApi("POST", "/api/gripper", { action: "set", position: e.target.value / 100 });
+  gripper({ action: b.dataset.grip }).then(() => ($("#gripSlider").value = b.dataset.grip === "open" ? 0 : 100)).catch(() => {})));
+$("#gripSlider").onchange = (e) => gripper({ action: "set", position: e.target.value / 100 }).catch(() => {});
 
 $("#homeBtn").onclick = async () => {
   if (!(await confirmSheet("<b>Home the arm?</b><br><span class='muted'>All joints move to the home position.</span>", "Home"))) return;

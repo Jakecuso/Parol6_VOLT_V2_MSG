@@ -198,3 +198,17 @@ def test_stale_controller_is_stopped_before_connecting(monkeypatch):
     hub._kill_stale_controller()
     assert fake.wait(timeout=6) is not None
     assert subprocess.run(["pgrep", "-f", "parol6.server.cli"], capture_output=True).returncode != 0
+
+
+def test_gripper_needs_calibration_after_connect(monkeypatch):
+    """parol6 refuses MSG moves until calibrated; VOLT asks for calibration first."""
+    from volt.hub import RobotHub
+    monkeypatch.setattr(RobotHub, "is_mock", property(lambda self: False))
+    hub.settings.data["gripper"]["link"] = "can"
+    hub._grip_cal = False
+    c.post("/api/enable", headers=T)
+    r = c.post("/api/gripper", headers=T, json={"action": "close"})
+    assert r.status_code == 409 and r.json()["error"].startswith("GRIPPER_NOT_CALIBRATED")
+    assert c.post("/api/gripper", headers=T, json={"action": "calibrate"}).json()["ok"]
+    assert c.post("/api/gripper", headers=T, json={"action": "close"}).json()["ok"]
+    assert c.get("/api/state", headers=T).json()["gripper_calibrated"] is True

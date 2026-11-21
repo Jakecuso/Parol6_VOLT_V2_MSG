@@ -65,6 +65,9 @@ class RobotHub:
         # web server's event loop, and STOP must never queue behind other work.
         self._stopper = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stop")
         self._homed = False               # open-loop arm: angles mean nothing until homed
+        # parol6 refuses MSG moves until the "calibrate" tool action has run, and
+        # it forgets calibration on every connect (the simulator toggle resets it).
+        self._grip_cal = False
         self._enabled = False             # our own flag: halt() disables the controller,
                                           # but the API has no "enabled" readout
 
@@ -122,6 +125,7 @@ class RobotHub:
                     self._kill_stale_controller()
                     self.robot.simulate = cfg["simulate"]
                     self.robot.connect(com_port=cfg["com_port"] or None)
+                    self._grip_cal = False
                     self.state = "connected"
                     self.log(f"Connected ({'simulator' if self.simulate else 'real arm'})")
                     if cfg.get("auto_enable"):
@@ -150,6 +154,7 @@ class RobotHub:
         self.state = "disconnected"
         self._enabled = False
         self._homed = False
+        self._grip_cal = False
         if self.is_mock:
             self.robot.connect()
             self.state = "connected"
@@ -332,6 +337,10 @@ class RobotHub:
         elif action != "calibrate":
             raise MotionRefused("Bad gripper action")
 
+        if link == "can" and action != "calibrate" and not self._grip_cal and not self.is_mock:
+            raise MotionRefused("GRIPPER_NOT_CALIBRATED: the gripper needs calibrating after "
+                                "each connect (jaws open and close fully once)")
+
         if link == "uart":
             u = self._gripper_uart()
             resp = u.calibrate() if action == "calibrate" else u.set_position(round(position * 255))
@@ -345,6 +354,7 @@ class RobotHub:
         if position is not None:
             self._grip_pos = position
         if action == "calibrate":
+            self._grip_cal = True
             self.journal.add("gripper_calibrated", f"Gripper calibrated over {link.upper()}",
                              link=link, response=str(resp))
         self.log(f"Gripper {action}" + (f" {position:.2f}" if action == "set" else ""))
@@ -409,6 +419,7 @@ class RobotHub:
             "state": self.state, "sim": self.simulate, "mock": self.is_mock,
             "enabled": False, "estop": None, "busy": self._busy, "homed": self.homed,
             "joints": None, "pose": None, "gripper": self._grip_pos,
+            "gripper_calibrated": self._grip_cal or self.is_mock,
             "error": self.last_error if self.state != "connected" else "",
         }
         if self.robot.connected:
